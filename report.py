@@ -122,19 +122,31 @@ def compute_time_per_char(keystrokes):
 def compute_deletions_per_char(keystrokes):
     # keystrokes should be time ordered
     del_count = {}
-    first = ''
-    last_keystroke = None
-    #TODO this is wromg, I should loop backwards and keep a "del counter" and see what was deleted
-    for ks in keystrokes:
-        if last_keystroke == None:
-            last_keystroke = keystroke
-            continue
-
+    # TODO account for <, >, ^, v, and clicks.
+    assert len(keystrokes) > 1
+    for i in range(len(keystrokes)-1,1,-1):
+        ks = keystrokes[i]
+        last_ks = keystrokes[i-1]
         if ks.key == "[del]":
-            if not ks.key in del_count:
-                del_count[ks.key] = 0
-            del_count[ks.key]
+            if not last_ks.key in del_count:
+                del_count[last_ks.key] = 0
+            del_count[last_ks.key] += 1
 
+    return del_count
+
+def compute_wpm(keystrokes):
+    # keystrokes should be time ordered
+    word_count = 0
+    assert len(keystrokes) > 1
+    for i in range(1,len(keystrokes)):
+        ks = keystrokes[i]
+        last_ks = keystrokes[i-1]
+        if ks.key == "[space]": # TODO idk what space is
+            if not last_ks.key in del_count:
+                del_count[last_ks.key] = 0
+            del_count[last_ks.key] += 1
+
+    return del_count
 
 if __name__ == '__main__':
     keystrokes = get_keystrokes()
