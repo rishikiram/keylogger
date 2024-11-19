@@ -53,7 +53,7 @@ def print_statistics(keystrokes):
     start_time = min(ks.time for ks in keystrokes)
     end_time = max(ks.time for ks in keystrokes)
 
-    print('START/END times')
+    print('WPM: %s' % compute_wpm(keystrokes))
     print('Start time: %s' % start_time.isoformat())
     print('End time: %s' % end_time.isoformat())
     print('Duration: %s' % (end_time - start_time))
@@ -97,6 +97,11 @@ def write_plaintext(keystrokes, to_filename):
                 f.write(ks.key.upper() if shift else ks.key)
             elif ks.key == '[return]':
                 f.write('\n')
+def convert_to_char(key):
+    match key:
+        case  "[tab]": return "\t"
+        case "[return]" : return "\n"
+        case _ : return key
 
 def compute_time_per_char(keystrokes):
     # keystrokes should be time ordered
@@ -122,31 +127,34 @@ def compute_time_per_char(keystrokes):
 def compute_deletions_per_char(keystrokes):
     # keystrokes should be time ordered
     del_count = {}
+    del_bank = 0
     # TODO account for <, >, ^, v, and clicks.
     assert len(keystrokes) > 1
     for i in range(len(keystrokes)-1,1,-1):
         ks = keystrokes[i]
         last_ks = keystrokes[i-1]
         if ks.key == "[del]":
+            del_bank += 1
+        elif del_bank > 0:
             if not last_ks.key in del_count:
                 del_count[last_ks.key] = 0
             del_count[last_ks.key] += 1
-
+            del_bank = 0
     return del_count
 
 def compute_wpm(keystrokes):
     # keystrokes should be time ordered
     word_count = 0
+    total_time = 0 # seconds
     assert len(keystrokes) > 1
     for i in range(1,len(keystrokes)):
         ks = keystrokes[i]
         last_ks = keystrokes[i-1]
-        if ks.key == "[space]": # TODO idk what space is
-            if not last_ks.key in del_count:
-                del_count[last_ks.key] = 0
-            del_count[last_ks.key] += 1
-
-    return del_count
+        if convert_to_char(ks.key).isspace() and not convert_to_char(last_ks.key).isspace() :
+            word_count += 1
+        #TODO if is a period, dont add time.
+        total_time += min(ks.time - last_ks.time, 5)
+    return word_count/total_time * 60
 
 if __name__ == '__main__':
     keystrokes = get_keystrokes()
@@ -160,6 +168,8 @@ if __name__ == '__main__':
 
     print_histogram(frequencies, max_limit=20)
     print()
+
+
 
     json_serialize(keystrokes, 'out/pramod.json')
     write_plaintext(keystrokes, 'out/pramod.txt')
