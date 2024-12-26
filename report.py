@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import os
 import math
+import sys
 
 TIMEZONE = pytz.timezone('US/Mountain')
 MAX_HIST_COUNT = 40
@@ -53,7 +54,7 @@ def print_statistics(keystrokes):
     start_time = min(ks.time for ks in keystrokes)
     end_time = max(ks.time for ks in keystrokes)
 
-    print('WPM: %s' % compute_wpm(keystrokes))
+    print('WPM: %.1f' % compute_wpm(keystrokes))
     print('Start time: %s' % start_time.isoformat())
     print('End time: %s' % end_time.isoformat())
     print('Duration: %s' % (end_time - start_time))
@@ -125,21 +126,40 @@ def compute_time_per_char(keystrokes):
     return time
 
 def compute_deletions_per_char(keystrokes):
+    # make adjusted string with [right] and [left]
     # keystrokes should be time ordered
+    # TODO account for ^, v, and clicks.
+    start = []
+    end = []
+    for ks in keystrokes:
+        if ks.key == "[left]":
+            if len(start) == 0:
+                continue
+            end = [start[-1]] + end
+            start = start[:-1]
+        elif ks.key == "[right]":
+            if len(end) == 0:
+                continue
+            start = start + [end[0]]
+            end = end[1:]
+        else:
+            # do not add [right-ctr] and such
+            start = start + [ks.key]
+    
+    
+    ordered_keystrokes = start + end
     del_count = {}
     del_bank = 0
-    # TODO account for <, >, ^, v, and clicks.
-    assert len(keystrokes) > 1
-    for i in range(len(keystrokes)-1,1,-1):
-        ks = keystrokes[i]
-        last_ks = keystrokes[i-1]
-        if ks.key == "[del]":
+    for i in range(len(ordered_keystrokes)-1,1,-1):
+        key = ordered_keystrokes[i]
+        last_key = ordered_keystrokes[i-1]
+        if key == "[del]":
             del_bank += 1
         elif del_bank > 0:
-            if not last_ks.key in del_count:
-                del_count[last_ks.key] = 0
-            del_count[last_ks.key] += 1
-            del_bank = 0
+            if not last_key in del_count:
+                del_count[last_key] = 0
+            del_count[last_key] += 1
+            del_bank -= 1
     return del_count
 
 def compute_wpm(keystrokes):
@@ -147,18 +167,33 @@ def compute_wpm(keystrokes):
     word_count = 0
     total_time = 0 # seconds
     assert len(keystrokes) > 1
+    pause_time = False
     for i in range(1,len(keystrokes)):
         ks = keystrokes[i]
         last_ks = keystrokes[i-1]
         if convert_to_char(ks.key).isspace() and not convert_to_char(last_ks.key).isspace() :
             word_count += 1
-        #TODO if is a period, dont add time.
-        total_time += min(ks.time - last_ks.time, 5)
+        if ks.key == ".":
+            pause_time = True
+        if not pause_time: 
+            total_time += min((ks.time - last_ks.time).total_seconds(), 5.0)
+        if convert_to_char(ks.key).isalpha():
+            pause_time = False
     return word_count/total_time * 60
 
 if __name__ == '__main__':
-    keystrokes = get_keystrokes()
+    if len(sys.argv) == 2:
+        filename = sys.argv[1]
+    else:
+        print('Usage: python report.py [filename]')
+        exit(1)
+    if not os.path.isfile(filename):
+        print('Error: "%s" is not a file.' % filename)
+        exit(1)
+
+    keystrokes = get_keystrokes(filename)
     frequencies = compute_frequences(keystrokes)
+    delete_frequencies = compute_deletions_per_char(keystrokes)
 
     print('*** REPORT ***')
     print()
@@ -166,10 +201,10 @@ if __name__ == '__main__':
     print_statistics(keystrokes)
     print()
 
-    print_histogram(frequencies, max_limit=20)
+    print_histogram(delete_frequencies, max_limit=20)
     print()
 
 
 
-    json_serialize(keystrokes, 'out/pramod.json')
-    write_plaintext(keystrokes, 'out/pramod.txt')
+    # json_serialize(keystrokes, 'out/pramod.json')
+    # write_plaintext(keystrokes, 'out/pramod.txt')
